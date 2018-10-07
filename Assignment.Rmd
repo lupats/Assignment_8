@@ -1,0 +1,96 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+
+
+```{r}
+#loading packages
+install.packages("lavaan", dependencies = T)
+```
+
+```{r}
+library(pacman)
+    p_load(tidyverse,lavaan, psych)
+    
+```
+Loading data
+```{r}
+ data<-read.table("Northdale survey _reverse coded_.dat",
+                     header = TRUE,sep="\t")
+```
+
+```{r}
+#Making variables for the path analysis   
+
+#   Threat
+    data$Thrt_Phy1<-data$Thrt_Phy1/3
+    data$Thrt_Phy2<-data$Thrt_Phy2/3
+    data$Thrt_Phy3<-data$Thrt_Phy3/3
+    data$threat_scale<-data$Thrt_Phy1+data$Thrt_Phy2+data$Thrt_Phy3
+#   Prejudice
+    data$Att_IS1<-(data$Att_IS1-1)/6.75    
+    data$Att_IS2<-(data$Att_IS2-1)/6.75  
+    data$Att_IS4<-(data$Att_IS4-1)/6.75  
+    data$prejudice_scale<-(data$Att_IS1 + data$Att_IS2 + data$Att_IS4)
+#   Contact quantity
+    data$Cnt_pos_B<-data$Cnt_pos_B/2
+    data$Cnt_pos_IS1<-data$Cnt_pos_IS1/2
+    data$contactquant_scale<-data$Cnt_pos_B+data$Cnt_pos_IS1
+#   Contact_quality
+    data$Cnt_Qul_IS1<-data$Cnt_Qul_IS1/3
+    data$Cnt_Qul_IS2<-data$Cnt_Qul_IS2/3
+    data$Cnt_Qul_IS3<-data$Cnt_Qul_IS3/3
+    data$contactqual_scale<-data$Cnt_Qul_IS1+data$Cnt_Qul_IS2+data$Cnt_Qul_IS3
+#   Empathy
+    data$Empath1<-data$Empath1/3    
+    data$Empath2<-data$Empath2/3
+    data$Empath3<-data$Empath3/3
+    data$empathy_scale<-(data$Empath1 + data$Empath2 + data$Empath3)
+    
+    
+```
+
+```{r}
+# Defining the path model
+pathm1 <- '
+      threat_scale ~ contactquant_scale
+      prejudice_scale ~ threat_scale 
+
+'    
+prejpathfit1 <- sem(pathm1, data = data)
+summary(prejpathfit1, fit.measures = T)   
+
+# Compare lm output
+# To make things comparable, keep only complete cases
+data %<>% select(contactquant_scale, prejudice_scale, threat_scale) %>% 
+  na.omit()
+# First compute first step regression
+lm_model_pathm1_A <- lm(threat_scale ~ contactquant_scale, data = data)
+summary(lm_model_pathm1_A)
+# Now modeling prejudice
+lm_model_pathm1_B <- lm(prejudice_scale ~ threat_scale, data = data)
+summary(lm_model_pathm1_B)
+
+
+```
+
+```{r}
+    
+# Drawing model using package semPlot
+p_load(semPlot)
+semPlot::semPaths(prejpathfit1, what = "est", layout = "spring")
+
+
+# Defining path model 2
+pathm2 <- '
+      threat_scale ~ contactquant_scale
+      prejudice_scale ~ threat_scale +contactquant_scale
+'    
+prejpathfit2 <- sem(pathm2, data = data)
+summary(prejpathfit2, fit.measures = T)   
+anova(prejpathfit2, prejpathfit1)
+```
+
