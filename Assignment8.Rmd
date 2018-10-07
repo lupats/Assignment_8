@@ -1,0 +1,327 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+
+
+```{r}
+#loading packages
+install.packages("lavaan", dependencies = T)
+```
+
+```{r}
+library(pacman)
+    p_load(tidyverse,lavaan, psych)
+    
+```
+Loading data
+```{r}
+ data<-read.table("Northdale survey _reverse coded_.dat",
+                     header = TRUE,sep="\t")
+```
+
+```{r}
+#Making variables for the path analysis   
+set.seed(7)
+#   Threat
+    data$Thrt_Phy1<-data$Thrt_Phy1/3
+    data$Thrt_Phy2<-data$Thrt_Phy2/3
+    data$Thrt_Phy3<-data$Thrt_Phy3/3
+    data$threat_scale<-data$Thrt_Phy1+data$Thrt_Phy2+data$Thrt_Phy3
+#   Prejudice
+    data$Att_IS1<-(data$Att_IS1-1)/6.75    
+    data$Att_IS2<-(data$Att_IS2-1)/6.75  
+    data$Att_IS4<-(data$Att_IS4-1)/6.75  
+    data$prejudice_scale<-(data$Att_IS1 + data$Att_IS2 + data$Att_IS4)
+#   Contact quantity
+    data$Cnt_pos_B<-data$Cnt_pos_B/2
+    data$Cnt_pos_IS1<-data$Cnt_pos_IS1/2
+    data$contactquant_scale<-data$Cnt_pos_B+data$Cnt_pos_IS1
+#   Contact_quality
+    data$Cnt_Qul_IS1<-data$Cnt_Qul_IS1/3
+    data$Cnt_Qul_IS2<-data$Cnt_Qul_IS2/3
+    data$Cnt_Qul_IS3<-data$Cnt_Qul_IS3/3
+    data$contactqual_scale<-data$Cnt_Qul_IS1+data$Cnt_Qul_IS2+data$Cnt_Qul_IS3
+#   Empathy
+    data$Empath1<-data$Empath1/3    
+    data$Empath2<-data$Empath2/3
+    data$Empath3<-data$Empath3/3
+    data$empathy_scale<-(data$Empath1 + data$Empath2 + data$Empath3)
+    
+    
+```
+
+```{r}
+# Defining the path model
+pathm1 <- '
+      threat_scale ~ contactquant_scale
+      prejudice_scale ~ threat_scale 
+
+'    
+prejpathfit1 <- sem(pathm1, data = data)
+summary(prejpathfit1, fit.measures = T)   
+
+# Comparing lm output using only complete cases
+data %<>% select(contactquant_scale, prejudice_scale, threat_scale) %>% 
+  na.omit()
+# First computing first step regression
+lm_model_pathm1_A <- lm(threat_scale ~ contactquant_scale, data = data)
+summary(lm_model_pathm1_A)
+# Now modeling prejudice
+lm_model_pathm1_B <- lm(prejudice_scale ~ threat_scale, data = data)
+summary(lm_model_pathm1_B)
+
+#RMSEA is 0.322, quite low, this suggests that the model is a good fit 
+```
+
+```{r}
+    
+# Drawing model using package semPlot
+p_load(semPlot)
+semPlot::semPaths(prejpathfit1, what = "est", layout = "spring")
+
+
+# Defining path model 2
+pathm2 <- '
+      threat_scale ~ contactquant_scale
+      prejudice_scale ~ threat_scale +contactquant_scale
+'    
+prejpathfit2 <- sem(pathm2, data = data)
+summary(prejpathfit2, fit.measures = T)   
+anova(prejpathfit2, prejpathfit1)
+```
+```{r}
+#Because our models are missing measurement error,we should add measurement error into our models explicitly which is necessary for regression analysis, will run Confirmatory Factor Analysis. In addition, our pathfit2 in the model has zero degrees of freedom 
+#Running CFA of model1 so that we predict the factor structure of one or more factors simultaneously
+#   Oblique model
+    prejcfamodel1 <- '
+                  # loadings
+                  threat_scale       =~ Thrt_Phy1 + Thrt_Phy2 + Thrt_Phy3
+                  contactquant_scale =~ Cnt_pos_B + Cnt_pos_IS1 
+                  prejudice_scale    =~ Att_IS1 + Att_IS2 + Att_IS4
+                  '
+    prejcfacfa1 <- cfa(prejcfamodel1, data = data)
+    summary(prejcfacfa1, fit.measures = T)
+
+#   SEM of model1
+    prejpathmodel1 <- '
+                # MEASUREMENT MODEL
+                  threat_scale       =~ Thrt_Phy1 + Thrt_Phy2 + Thrt_Phy3
+                  contactquant_scale =~ Cnt_pos_B + Cnt_pos_IS1 
+                  prejudice_scale    =~ Att_IS1 + Att_IS2 + Att_IS4
+      
+                # STRUCTURAL MODEL
+                  prejudice_scale ~ threat_scale 
+                  threat_scale ~ contactquant_scale
+                  '
+    prejpathfit1 <- sem(prejpathmodel1, data = data)
+    summary(prejpathfit1, fit.measures = T)
+  
+    # Take a look at residuals and modification indices
+      resid(prejpathfit1, type="normalized")
+      modificationindices(prejpathfit1)
+
+      
+      
+#   SEM of model2
+      prejpathmodel2 <- '
+                # MEASUREMENT MODEL
+                  threat_scale       =~ Thrt_Phy1 + Thrt_Phy2 + Thrt_Phy3
+                  contactquant_scale =~ Cnt_pos_B + Cnt_pos_IS1 
+                  prejudice_scale    =~ Att_IS1 + Att_IS2 + Att_IS4
+      
+                # STRUCTURAL MODEL
+                  prejudice_scale ~ threat_scale
+                  threat_scale ~ contactquant_scale
+                  
+                # CORRELATED ERRORS
+                  Att_IS1 ~~ Cnt_pos_B
+                  Att_IS2 ~~ Cnt_pos_B
+                  Att_IS4 ~~ Cnt_pos_B
+                  Att_IS1 ~~ Cnt_pos_IS1
+                  Att_IS2 ~~ Cnt_pos_IS1
+                  Att_IS4 ~~ Cnt_pos_IS1
+      
+               '
+      prejpathfit2 <- sem(prejpathmodel2, data = data)
+      summary(prejpathfit2, fit.measures = T)
+      
+      # Take a look at residuals and modification indices
+      resid(prejpathfit2, type="normalized")
+```
+getting an error message, cna't fix it, apparently it has to do with the variable names being different, just can't find a way around that
+
+```{r}
+#   SEM of model1
+    prejpathmodel1 <- '
+                # MEASUREMENT MODEL
+                  threat_scale       =~ Thrt_Phy1 + Thrt_Phy2 + Thrt_Phy3
+                  contactquant_scale =~ Cnt_pos_B + Cnt_pos_IS1 
+                  prejudice_scale    =~ Att_IS1 + Att_IS2 + Att_IS4
+      
+                # STRUCTURAL MODEL
+                  prejudice_scale ~ threat_scale 
+                  threat_scale ~ contactquant_scale
+                  '
+    prejpathfit1 <- sem(prejpathmodel1, data = data)
+    summary(prejpathfit1, fit.measures = T)
+  
+    # Take a look at residuals and modification indices
+      resid(prejpathfit1, type="normalized")
+      modificationindices(prejpathfit1)
+
+
+```
+```{r}
+#   SEM of model2
+      prejpathmodel2 <- '
+                # MEASUREMENT MODEL
+                  threat_scale       =~ Thrt_Phy1 + Thrt_Phy2 + Thrt_Phy3
+                  contactquant_scale =~ Cnt_pos_B + Cnt_pos_IS1 
+                  prejudice_scale    =~ Att_IS1 + Att_IS2 + Att_IS4
+      
+                # STRUCTURAL MODEL
+                  prejudice_scale ~ threat_scale
+                  threat_scale ~ contactquant_scale
+                  
+                # CORRELATED ERRORS
+                  Att_IS1 ~~ Cnt_pos_B
+                  Att_IS2 ~~ Cnt_pos_B
+                  Att_IS4 ~~ Cnt_pos_B
+                  Att_IS1 ~~ Cnt_pos_IS1
+                  Att_IS2 ~~ Cnt_pos_IS1
+                  Att_IS4 ~~ Cnt_pos_IS1
+      
+               '
+      prejpathfit2 <- sem(prejpathmodel2, data = data)
+      summary(prejpathfit2, fit.measures = T)
+      
+      # Take a look at residuals and modification indices
+      resid(prejpathfit2, type="normalized")
+      
+      
+      
+      
+
+```
+```{r}
+#   SEM of model3
+      prejpathmodel3 <- '
+      # MEASUREMENT MODEL
+      threat_scale       =~ Thrt_Phy1 + Thrt_Phy2 + Thrt_Phy3
+      contactquant_scale =~ Cnt_pos_B + Cnt_pos_IS1 
+      prejudice_scale    =~ Att_IS1 + Att_IS2 + Att_IS4
+      empathy_scale      =~ Empath1 + Empath2 + Empath3
+      
+      # STRUCTURAL MODEL
+      prejudice_scale ~ threat_scale + empathy_scale 
+      threat_scale ~ contactquant_scale + empathy_scale
+      empathy_scale ~ contactquant_scale
+      
+      
+      # CORRELATED ERRORS
+      Att_IS1 ~~ Cnt_pos_B
+      Att_IS2 ~~ Cnt_pos_B
+      Att_IS4 ~~ Cnt_pos_B
+      Att_IS1 ~~ Cnt_pos_IS1
+      Att_IS2 ~~ Cnt_pos_IS1
+      Att_IS4 ~~ Cnt_pos_IS1
+      
+      '
+      prejpathfit3 <- sem(prejpathmodel3, data = data)
+      summary(prejpathfit3, fit.measures = T)
+      
+      # Take a look at residuals and modification indices
+      resid(prejpathfit3, type="normalized")
+      
+      
+      
+
+```
+
+```{r}
+#   SEM of model4
+      prejpathmodel4 <- '
+      # MEASUREMENT MODEL
+      threat_scale       =~ Thrt_Phy1 + Thrt_Phy2 + Thrt_Phy3
+      contactquant_scale =~ Cnt_pos_B + Cnt_pos_IS1 
+      prejudice_scale    =~ Att_IS1 + Att_IS2 + Att_IS4
+      
+      # STRUCTURAL MODEL
+      prejudice_scale ~ a*threat_scale
+      threat_scale ~ b*contactquant_scale
+      indirect := a*b
+      
+      # CORRELATED ERRORS
+      Att_IS1 ~~ Cnt_pos_B
+      Att_IS2 ~~ Cnt_pos_B
+      Att_IS4 ~~ Cnt_pos_B
+      Att_IS1 ~~ Cnt_pos_IS1
+      Att_IS2 ~~ Cnt_pos_IS1
+      Att_IS4 ~~ Cnt_pos_IS1
+      
+      '
+      prejpathfit4 <- sem(prejpathmodel4, data = data)
+      summary(prejpathfit4, fit.measures = T)
+      
+
+```
+
+```{r}
+#   SEM of model5
+      prejpathmodel5 <- '
+      # MEASUREMENT MODEL
+      threat_scale       =~ Thrt_Phy1 + Thrt_Phy2 + Thrt_Phy3
+      contactquant_scale =~ Cnt_pos_B + Cnt_pos_IS1 
+      prejudice_scale    =~ Att_IS1 + Att_IS2 + Att_IS4
+      
+      # STRUCTURAL MODEL
+      prejudice_scale ~ threat_scale + contactquant_scale
+      threat_scale ~ contactquant_scale
+
+      # CORRELATED ERRORS
+      Att_IS1 ~~ Cnt_pos_B
+      Att_IS2 ~~ Cnt_pos_B
+      Att_IS4 ~~ Cnt_pos_B
+      Att_IS1 ~~ Cnt_pos_IS1
+      Att_IS2 ~~ Cnt_pos_IS1
+      Att_IS4 ~~ Cnt_pos_IS1
+      
+      '
+      prejpathfit5 <- sem(prejpathmodel5, data = data)
+      summary(prejpathfit5, fit.measures = T)
+    
+
+#   COMPARE models 2 and 5
+    anova(prejpathfit2, prejpathfit5)
+      
+    # No difference, so drop the path 
+```
+This is continuing to happen, same error message for the rest of the models
+
+
+```{r}
+#Testing model 1 
+
+# Taking a look at residuals and modification indices
+
+resid(prejpathfit1, type = "normalized")
+modificationindices(prejpathfit1)
+
+```
+```{r}
+#Question 3, othorgonal facture structure
+
+    prejcfamodel1 <- '
+                  # loadings
+                  threat_scale       =~ Thrt_Phy1 + Thrt_Phy2 + Thrt_Phy3
+                  contactquant_scale =~ Cnt_pos_B + Cnt_pos_IS1 
+                  prejudice_scale    =~ Att_IS1 + Att_IS2 + Att_IS4
+                  '
+    prejcfacfa1 <- cfa(prejcfamodel1, data = data, orthogonal = TRUE)
+    summary(prejcfacfa1, fit.measures = T )
+    #again here we still have an errore unfortunately
+```
+
